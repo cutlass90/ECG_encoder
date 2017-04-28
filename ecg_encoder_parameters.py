@@ -1,10 +1,10 @@
 parameters = {
     'n_channels':3,
-    'batch_size':4,
+    'batch_size':2,
     'n_frames':5,
     'overlap':0,
     'rr':8,
-    'n_hidden_RNN':128,
+    'n_hidden_RNN':64,
     'keep_prob':1,
     'weight_decay':0.0001,
     'learn_rate_start':0.01,

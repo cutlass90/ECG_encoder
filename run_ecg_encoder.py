@@ -47,13 +47,14 @@ data_loader = utils.LoadDataFileShuffling(batch_size=PARAM['batch_size'],
                                     gen_params=gen_params,
                                     verbose=PARAM['verbose'])
 
-"""
+
 # Train model
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
     n_hidden_RNN=PARAM['n_hidden_RNN'],
     reduction_ratio=PARAM['rr'],
+    use_true_inps=True,
     do_train=True) as ecg_encoder:
     
     
@@ -63,10 +64,60 @@ with ECGEncoder(
         weight_decay=PARAM['weight_decay'],
         learn_rate_start=PARAM['learn_rate_start'],
         learn_rate_end=PARAM['learn_rate_end'],
-        n_iter = n_iter_train,
-        save_model_every_n_iter = save_model_every_n_iter,
-        path_to_model = path_to_model) 
-"""
+        n_iter=n_iter_train,
+        save_model_every_n_iter=save_model_every_n_iter,
+        path_to_model=path_to_model)
+
+    [print(var) for var in tf.trainable_variables()]
+
+
+# Predictions
+path='../data/little/AAO1CMED2K865.npy'
+f_name = ecg.utils.get_file_name(path)
+with ECGEncoder(
+    n_frames=PARAM['n_frames'],
+    n_channel=PARAM['n_channels'],
+    n_hidden_RNN=PARAM['n_hidden_RNN'],
+    reduction_ratio=PARAM['rr'],
+    use_true_inps=True,
+    do_train=False) as ecg_encoder:
+
+    ecg_encoder.predict(
+        path_to_file='../data/little/AAO1CMED2K865.npy',
+        path_to_save=path_to_predictions+f_name+'_pred.npy',
+        path_to_model=os.path.dirname(path_to_model),
+        use_delta_coding=False)
+
+utils.test(true_path=path, pred_path=path_to_predictions+f_name+'_pred.npy',
+    path_save=path_to_predictions+f_name+'_true_pred.png')
+
+
+
+
+
+
+
+
+with ECGEncoder(
+    n_frames=PARAM['n_frames'],
+    n_channel=PARAM['n_channels'],
+    n_hidden_RNN=PARAM['n_hidden_RNN'],
+    reduction_ratio=PARAM['rr'],
+    use_true_inps=False,
+    do_train=True) as ecg_encoder:
+    
+    
+    ecg_encoder.train_(
+        data_loader = data_loader,
+        keep_prob=PARAM['keep_prob'],
+        weight_decay=PARAM['weight_decay'],
+        learn_rate_start=PARAM['learn_rate_start'],
+        learn_rate_end=PARAM['learn_rate_end'],
+        n_iter=n_iter_train,
+        save_model_every_n_iter=save_model_every_n_iter,
+        path_to_model=path_to_model)
+    # [print(var) for var in tf.trainable_variables()]
+
 
 
 
@@ -78,6 +129,7 @@ with ECGEncoder(
     n_channel=PARAM['n_channels'],
     n_hidden_RNN=PARAM['n_hidden_RNN'],
     reduction_ratio=PARAM['rr'],
+    use_true_inps=False,
     do_train=False) as ecg_encoder:
 
     ecg_encoder.predict(
@@ -88,4 +140,4 @@ with ECGEncoder(
 
 utils.test(true_path=path, pred_path=path_to_predictions+f_name+'_pred.npy',
     path_save=path_to_predictions+f_name+'_pred.png')
-    
+
