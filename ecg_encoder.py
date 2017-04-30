@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm
 
 import ecg_encoder_tools as utils
-import misc
+
 
 def simple_decoder_fn_train_(encoder_state, name=None):
 
@@ -100,35 +100,36 @@ class ECGEncoder(object):
 
         # Encoder
         convo = self.convo_graph(self.inputs) #b*n_f x h1 x c1
-        print('convo', convo)
+        # print('convo', convo)
 
         seq_l = tf.cast((self.sequence_length/self.reduction_ratio), tf.int32)
         frame_embs = self.compress_frames_RNN(convo, seq_l, n_layers=2)
         frame_embs = tf.reshape(frame_embs, [-1, self.n_frames, self.n_hidden_RNN])
         # b x n_f x hRNN
-        print('frame_embs', frame_embs)# b x n_f x hRNN
+        # print('frame_embs', frame_embs)# b x n_f x hRNN
 
         self.Z = self.encode_to_Z(inputs=frame_embs, n_layers=2) #b x hRNN
-        print('Z', self.Z)
+        # print('Z', self.Z)
 
 
 
         # Decoder
         r_frame_embs = self.decode_from_Z(encoded_state=self.Z,
             inputs=frame_embs, n_layers=1) # b x n_f x hRNN
-        print('r_frame_embs', r_frame_embs)
+        # print('r_frame_embs', r_frame_embs)
 
         r_frame_embs = tf.reshape(r_frame_embs, [-1, self.n_hidden_RNN])# b*n_f x hRNN
         r_convo = self.decompress_frames_RNN(encoded_state=r_frame_embs,
             seq_lengths=seq_l, inputs=convo, n_layers=1) #b*n_f x h1 x c1
-        print('r_convo', r_convo)
+        # print('r_convo', r_convo)
 
         self.r_inputs = self.deconvo_graph(r_convo) #b*n_f x h2 x c2
-        print('r_inputs', self.r_inputs)
+        # print('r_inputs', self.r_inputs)
 
 
 
-        self.cost = self.create_cost_graph(original=self.inputs, recovered=self.r_inputs)
+        self.cost = self.create_cost_graph(original=self.inputs,
+            recovered=self.r_inputs, Z=self.Z)
         print('Done!')
 
 
@@ -326,7 +327,7 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def create_cost_graph(self, original, recovered):
+    def create_cost_graph(self, original, recovered, Z):
         print('\tcreate_cost_graph')
 
         self.mse = tf.reduce_mean(tf.square(original - recovered))
@@ -334,9 +335,12 @@ class ECGEncoder(object):
         self.L2_loss = self.weight_decay*sum([tf.reduce_mean(tf.square(var))
             for var in tf.trainable_variables()])
 
+        self.Z_L2_loss = tf.reduce_mean(tf.square(Z))
+
         tf.summary.scalar('MSE', self.mse)
         tf.summary.scalar('L2 loss', self.L2_loss)
-        return self.mse + self.L2_loss
+        tf.summary.scalar('Z L2 loss', self.Z_L2_loss)
+        return self.mse + self.L2_loss + self.Z_L2_loss
 
 
     # --------------------------------------------------------------------------
