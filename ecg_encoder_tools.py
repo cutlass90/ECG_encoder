@@ -68,11 +68,15 @@ class LoadDataFileShuffling:
                 print('Warning! Len of file too small!')
             else:
                 file_start = np.random.randint(0, len(channels[0]) - file_len - 1)
-                channels = [channel[file_start:file_start+file_len]\
+                beats_arr = np.zeros_like(channels[0])
+                beats_arr[data['beats']] = 1
+                beats_arr = beats_arr[file_start : file_start + file_len]
+                data['beats'] = np.nonzero(beats_arr)[0]
+                channels = [channel[file_start : file_start + file_len]\
                     for channel in channels]
                 data = ecg.utils.write_channels(data, channels)
         
-        gen =  step_generator(data, **self.gen_params)
+        gen = step_generator(data, **self.gen_params)
 
         return gen
     
