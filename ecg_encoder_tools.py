@@ -33,6 +33,11 @@ class LoadDataFileShuffling:
         self.current_list_of_data = []
         self.paths_to_data = find_files(path = path_to_data, file_type = '*.npy')
         shuffle(self.paths_to_data)
+
+        self.file_max_len = 175*3600*2 #two hours None if no limit
+        self.file_min_len = 175*3600 #one hour None if no limit
+        if (self.file_max_len is not None) and (self.file_min_len is not None):
+            assert self.file_max_len > self.file_min_len, 'must be file_max_len > file_min_len'
         
         self.n_epoch = 0
         self.n_batches = 0
@@ -56,6 +61,16 @@ class LoadDataFileShuffling:
             pass
             #print("\nFile " + self.paths_to_data[-1] + " was loaded")
         data = np.load(self.paths_to_data.pop()).item()
+        if (self.file_max_len is not None) and (self.file_min_len is not None):
+            channels = ecg.utils.get_channels(data)
+            file_len = np.random.randint(self.file_min_len, self.file_max_len + 1)
+            if len(channels[0]) <= (file_len + 1):
+                print('Warning! Len of file too small!')
+            else:
+                file_start = np.random.randint(0, len(channels[0]) - file_len - 1)
+                channels = [channel[file_start:file_start+file_len]\
+                    for channel in channels]
+                data = ecg.utils.write_channels(data, channels)
         
         gen =  step_generator(data, **self.gen_params)
 
