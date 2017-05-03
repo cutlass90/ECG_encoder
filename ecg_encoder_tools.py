@@ -6,6 +6,7 @@ import itertools
 
 import numpy as np
 import pandas as pd
+from tensorflow.python.framework import ops
 import tensorflow as tf
 import matplotlib
 import matplotlib.pyplot as plt
@@ -13,6 +14,45 @@ import tqdm as tqdm
 from sklearn.metrics import confusion_matrix
 import ecg
 
+
+def simple_decoder_fn_train_(encoder_state, name=None):
+
+    with ops.name_scope(name, "simple_decoder_fn_train", [encoder_state]):
+        pass
+
+    def decoder_fn(time, cell_state, cell_input, cell_output, context_state):
+        """ Decoder function used in the `dynamic_rnn_decoder` with the purpose of
+        training.
+        Args:
+          time: positive integer constant reflecting the current timestep.
+          cell_state: state of RNNCell.
+          cell_input: input provided by `dynamic_rnn_decoder`.
+          cell_output: output of RNNCell.
+          context_state: context state provided by `dynamic_rnn_decoder`.
+        Returns:
+          A tuple (done, next state, next input, emit output, next context state)
+            where:
+          done: `None`, which is used by the `dynamic_rnn_decoder` to indicate
+            that `sequence_lengths` in `dynamic_rnn_decoder` should be used.
+          next state: `cell_state`, this decoder function does not modify the
+            given state.
+          next input: `cell_input`, this decoder function does not modify the
+            given input. The input could be modified when applying e.g. attention.
+          emit output: `cell_output`, this decoder function does not modify the
+          given output.
+          next context state: `context_state`, this decoder function does not
+          modify the given context state. The context state could be modified when
+          applying e.g. beam search.
+        """
+        with ops.name_scope(name, "simple_decoder_fn_train",
+                            [time, cell_state, cell_input, cell_output,
+                             context_state]):
+            if cell_state is None:  # first call, return encoder_state
+                return (None, encoder_state, tf.zeros_like(encoder_state), cell_output,
+                    context_state)
+            else:
+                return (None, cell_state, cell_output, cell_output, context_state)
+    return decoder_fn
 
 
 
