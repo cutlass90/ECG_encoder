@@ -4,62 +4,22 @@ import math
 import itertools as it
 
 import tensorflow as tf
-from tensorflow.python.framework import ops
 import numpy as np
 from tqdm import tqdm
 
 import ecg_encoder_tools as utils
 
 
-def simple_decoder_fn_train_(encoder_state, name=None):
-
-    with ops.name_scope(name, "simple_decoder_fn_train", [encoder_state]):
-        pass
-
-    def decoder_fn(time, cell_state, cell_input, cell_output, context_state):
-        """ Decoder function used in the `dynamic_rnn_decoder` with the purpose of
-        training.
-        Args:
-          time: positive integer constant reflecting the current timestep.
-          cell_state: state of RNNCell.
-          cell_input: input provided by `dynamic_rnn_decoder`.
-          cell_output: output of RNNCell.
-          context_state: context state provided by `dynamic_rnn_decoder`.
-        Returns:
-          A tuple (done, next state, next input, emit output, next context state)
-            where:
-          done: `None`, which is used by the `dynamic_rnn_decoder` to indicate
-            that `sequence_lengths` in `dynamic_rnn_decoder` should be used.
-          next state: `cell_state`, this decoder function does not modify the
-            given state.
-          next input: `cell_input`, this decoder function does not modify the
-            given input. The input could be modified when applying e.g. attention.
-          emit output: `cell_output`, this decoder function does not modify the
-          given output.
-          next context state: `context_state`, this decoder function does not
-          modify the given context state. The context state could be modified when
-          applying e.g. beam search.
-        """
-        with ops.name_scope(name, "simple_decoder_fn_train",
-                            [time, cell_state, cell_input, cell_output,
-                             context_state]):
-            if cell_state is None:  # first call, return encoder_state
-                return (None, encoder_state, tf.zeros_like(encoder_state), cell_output,
-                    context_state)
-            else:
-                return (None, cell_state, cell_output, cell_output, context_state)
-    return decoder_fn
-
 class ECGEncoder(object):
 
-    def __init__(self, n_frames, n_channel, n_hidden_RNN, reduction_ratio,
-        use_true_inps, do_train):
+    def __init__(self, n_frames, n_channel, frame_emb_size, Z_size, reduction_ratio,
+        do_train):
 
         self.n_frames = n_frames
         self.n_channel = n_channel
-        self.n_hidden_RNN = n_hidden_RNN
+        self.frame_emb_size = frame_emb_size
+        self.Z_size = Z_size
         self.reduction_ratio = reduction_ratio
-        self.use_true_inps = use_true_inps
         self.create_graph()
         if do_train: self.create_optimizer_graph(self.cost)
         os.makedirs('summary', exist_ok=True)
@@ -100,31 +60,36 @@ class ECGEncoder(object):
 
         # Encoder
         convo = self.convo_graph(self.inputs) #b*n_f x h1 x c1
-        # print('convo', convo)
+        print('convo', convo)
 
         seq_l = tf.cast((self.sequence_length/self.reduction_ratio), tf.int32)
         frame_embs = self.compress_frames_RNN(convo, seq_l, n_layers=2)
-        frame_embs = tf.reshape(frame_embs, [-1, self.n_frames, self.n_hidden_RNN])
-        # b x n_f x hRNN
-        # print('frame_embs', frame_embs)# b x n_f x hRNN
+        frame_embs = tf.reshape(frame_embs, [-1, self.n_frames, self.frame_emb_size])
+        # b x n_f x frame_emb_size
+        print('frame_embs', frame_embs)# b x n_f x hRNN
 
         self.Z = self.encode_to_Z(inputs=frame_embs, n_layers=2) #b x hRNN
-        # print('Z', self.Z)
+        print('Z', self.Z)
 
 
 
         # Decoder
-        r_frame_embs = self.decode_from_Z(encoded_state=self.Z,
-            inputs=frame_embs, n_layers=1) # b x n_f x hRNN
-        # print('r_frame_embs', r_frame_embs)
+        r_frame_embs = self.decode_from_Z(
+            out_size=self.frame_emb_size,
+            encoded_data=self.Z,
+            cell=tf.contrib.rnn.GRUCell) # b x n_f x frame_emb_size
+        print('r_frame_embs', r_frame_embs)
 
-        r_frame_embs = tf.reshape(r_frame_embs, [-1, self.n_hidden_RNN])# b*n_f x hRNN
-        r_convo = self.decompress_frames_RNN(encoded_state=r_frame_embs,
-            seq_lengths=seq_l, inputs=convo, n_layers=1) #b*n_f x h1 x c1
-        # print('r_convo', r_convo)
+        r_frame_embs = tf.reshape(r_frame_embs, [-1, self.frame_emb_size])# b*n_f x frame_emb_size
+        r_convo = self.decompress_frames_RNN(
+            out_size=convo.get_shape().as_list()[-1],
+            encoded_data=r_frame_embs,
+            cell=tf.contrib.rnn.GRUCell,
+            sequence_length=seq_l)
+        print('r_convo', r_convo)
 
         self.r_inputs = self.deconvo_graph(r_convo) #b*n_f x h2 x c2
-        # print('r_inputs', self.r_inputs)
+        print('r_inputs', self.r_inputs)
 
 
 
@@ -199,7 +164,7 @@ class ECGEncoder(object):
         with tf.variable_scope('compress_frames_RNN'):
             # inputs b*n_f x h x c (h is variable value)
             # sequence_length b*n_f
-            cell = tf.contrib.rnn.GRUCell(self.n_hidden_RNN)
+            cell = tf.contrib.rnn.GRUCell(self.frame_emb_size)
 
             fw_cell = tf.contrib.rnn.MultiRNNCell([cell]*n_layers)
             fw_cell = tf.contrib.rnn.DropoutWrapper(fw_cell,
@@ -223,7 +188,7 @@ class ECGEncoder(object):
         with tf.variable_scope('encode_to_Z'):
             # inputs b*(n_b+o) x h x c (h is variable value)
             # sequence_length b*(n_b+o)
-            cell = tf.contrib.rnn.GRUCell(self.n_hidden_RNN)
+            cell = tf.contrib.rnn.GRUCell(self.Z_size)
 
             fw_cell = tf.contrib.rnn.MultiRNNCell([cell]*n_layers)
             fw_cell = tf.contrib.rnn.DropoutWrapper(fw_cell,
@@ -243,49 +208,28 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def decode_from_Z(self, encoded_state, inputs, n_layers):
+    def decode_from_Z(self, out_size, encoded_data, cell):
         print('\tdecode_from_Z')
-        # first step is zero-vectors
-        inputs = tf.concat([tf.zeros_like(inputs[:,0:1,:]), inputs], axis=1)[:,:-1,:]
-
+        sl = tf.tile([self.n_frames], [tf.shape(encoded_data)[0]])
         with tf.variable_scope('decode_from_Z'):
-            decoder_fn = tf.contrib.seq2seq.simple_decoder_fn_train(encoded_state)\
-                if self.use_true_inps else simple_decoder_fn_train_(encoded_state)
-            dec_cell = tf.contrib.rnn.GRUCell(self.n_hidden_RNN)
-            # dec_cell = tf.contrib.rnn.MultiRNNCell([dec_cell]*n_layers)
-            # dec_cell = tf.contrib.rnn.DropoutWrapper(dec_cell,
-                # output_keep_prob=self.keep_prob)
-
-            sl = tf.tile([self.n_frames], [tf.shape(inputs)[0]])
-            recover, _, _ = tf.contrib.seq2seq.dynamic_rnn_decoder(
-                cell=dec_cell,
-                decoder_fn=decoder_fn,
-                inputs=inputs if self.use_true_inps else None,
+            recover, _, _ = utils.my_decoder(
+                out_size=out_size,
+                encoded_data=encoded_data,
+                cell=cell,
                 sequence_length=sl)
-
             return recover
 
 
     # --------------------------------------------------------------------------
-    def decompress_frames_RNN(self, encoded_state, inputs, seq_lengths, n_layers):
+    def decompress_frames_RNN(self, out_size, encoded_data, cell, sequence_length):
         print('\tdecompress_frames_RNN')
-        # first step is zero-vectors
-        inputs = tf.concat([tf.zeros_like(inputs[:,0:1,:]), inputs], axis=1)[:,:-1,:]
-
         with tf.variable_scope('decompress_frames_RNN'):
-            decoder_fn = tf.contrib.seq2seq.simple_decoder_fn_train(encoded_state)\
-                if self.use_true_inps else simple_decoder_fn_train_(encoded_state)
-            dec_cell = tf.contrib.rnn.GRUCell(self.n_hidden_RNN)
-            # dec_cell = tf.contrib.rnn.MultiRNNCell([dec_cell]*n_layers)
-            # dec_cell = tf.contrib.rnn.DropoutWrapper(dec_cell,
-                # output_keep_prob=self.keep_prob)
-
-            recover, _, _ = tf.contrib.seq2seq.dynamic_rnn_decoder(
-                cell=dec_cell,
-                decoder_fn=decoder_fn,
-                inputs=inputs if self.use_true_inps else None,
-                sequence_length=seq_lengths)
-
+            
+            recover, _, _ = utils.my_decoder(
+                out_size=out_size,
+                encoded_data=encoded_data,
+                cell=cell,
+                sequence_length=sequence_length)
             return recover
 
 
@@ -448,8 +392,10 @@ class ECGEncoder(object):
 
 # testing #####################################################################################################################
 if __name__ == '__main__':
-    ECGEncoder(n_frames=10,
+    ECGEncoder(
+        n_frames=5,
         n_channel=3,
-        n_hidden_RNN=128,
+        frame_emb_size=128,
+        Z_size=512,
         reduction_ratio=8,
         do_train=True)

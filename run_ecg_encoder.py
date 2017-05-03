@@ -19,16 +19,16 @@ os.makedirs('summary/', exist_ok = True)
 
 
 
-# path_to_train_data = '../data/little/'
+path_to_train_data = '../data/little/'
 # path_to_train_data      = '../../data/train/chunked/'
 # path_to_train_data      = '../../../ECG_DATA/all/chunked_data/'
 # path_to_train_data = '../data/small_set/'
-path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
+# path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 # path_eval_cost_data     = '../../../ECG_DATA/ECG_DATA_1000samples_2/test/'
 # path_to_predict_data    = path_to_train_data
 path_to_predictions     = 'predictions/'
 os.makedirs(path_to_predictions, exist_ok = True)
-n_iter_train            = 200000
+n_iter_train            = 500
 # n_iter_eval             = 10000
 save_model_every_n_iter = 10000
 path_to_model = 'models/ecg_encoder'
@@ -48,63 +48,13 @@ data_loader = utils.LoadDataFileShuffling(batch_size=PARAM['batch_size'],
                                     gen_params=gen_params,
                                     verbose=PARAM['verbose'])
 
-""""
 # Train model
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
-    n_hidden_RNN=PARAM['n_hidden_RNN'],
+    frame_emb_size=PARAM['frame_emb_size'],
+    Z_size=PARAM['Z_size'],
     reduction_ratio=PARAM['rr'],
-    use_true_inps=True,
-    do_train=True) as ecg_encoder:
-    
-    
-    ecg_encoder.train_(
-        data_loader = data_loader,
-        keep_prob=PARAM['keep_prob'],
-        weight_decay=PARAM['weight_decay'],
-        learn_rate_start=PARAM['learn_rate_start'],
-        learn_rate_end=PARAM['learn_rate_end'],
-        n_iter=n_iter_train,
-        save_model_every_n_iter=save_model_every_n_iter,
-        path_to_model=path_to_model)
-
-    # [print(var) for var in tf.trainable_variables()]
-
-
-# Predictions
-path='../data/little/AAO1CMED2K865.npy'
-f_name = ecg.utils.get_file_name(path)
-with ECGEncoder(
-    n_frames=PARAM['n_frames'],
-    n_channel=PARAM['n_channels'],
-    n_hidden_RNN=PARAM['n_hidden_RNN'],
-    reduction_ratio=PARAM['rr'],
-    use_true_inps=True,
-    do_train=False) as ecg_encoder:
-
-    ecg_encoder.predict(
-        path_to_file=path,
-        path_to_save=path_to_predictions+f_name+'_pred.npy',
-        path_to_model=os.path.dirname(path_to_model),
-        use_delta_coding=False)
-
-utils.test(true_path=path, pred_path=path_to_predictions+f_name+'_pred.npy',
-    path_save=path_to_predictions+f_name+'_true_pred.png')
-"""
-
-
-
-
-
-
-
-with ECGEncoder(
-    n_frames=PARAM['n_frames'],
-    n_channel=PARAM['n_channels'],
-    n_hidden_RNN=PARAM['n_hidden_RNN'],
-    reduction_ratio=PARAM['rr'],
-    use_true_inps=False,
     do_train=True) as ecg_encoder:
     
     
@@ -128,9 +78,9 @@ f_name = ecg.utils.get_file_name(path)
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
-    n_hidden_RNN=PARAM['n_hidden_RNN'],
+    frame_emb_size=PARAM['frame_emb_size'],
+    Z_size=PARAM['Z_size'],
     reduction_ratio=PARAM['rr'],
-    use_true_inps=False,
     do_train=False) as ecg_encoder:
 
     ecg_encoder.predict(
