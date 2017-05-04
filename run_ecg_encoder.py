@@ -22,25 +22,25 @@ os.makedirs('summary/', exist_ok = True)
 # path_to_train_data = '../data/little/'
 # path_to_train_data      = '../../data/train/chunked/'
 # path_to_train_data      = '../../../ECG_DATA/all/chunked_data/'
-path_to_train_data = '../data/small_set/'
-# path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
+# path_to_train_data = '../data/small_set/'
+path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 # path_eval_cost_data     = '../../../ECG_DATA/ECG_DATA_1000samples_2/test/'
 # path_to_predict_data    = path_to_train_data
 path_to_predictions     = 'predictions/'
 os.makedirs(path_to_predictions, exist_ok = True)
-n_iter_train            = 20
+n_iter_train            = 10000
 # n_iter_eval             = 10000
 save_model_every_n_iter = 10000
 path_to_model = 'models/ecg_encoder'
 
 
-gen_params = dict(n_frames = PARAM['n_frames'],
-                overlap = 0,
+gen_params = dict(n_frames = 1,
+                overlap = PARAM['n_frames']-1,
                 get_data = not(PARAM['use_delta_coding']),
                 get_delta_coded_data = PARAM['use_delta_coding'],
                 get_events = False,
                 rr = PARAM['rr'])
-
+"""
 # Initialize data loader for training
 data_loader = utils.LoadDataFileShuffling(batch_size=PARAM['batch_size'],
                                     path_to_data=path_to_train_data,
@@ -55,6 +55,7 @@ with ECGEncoder(
     n_channel=PARAM['n_channels'],
     n_hidden_RNN=PARAM['n_hidden_RNN'],
     reduction_ratio=PARAM['rr'],
+    frame_weights=PARAM['frame_weights'],
     do_train=True) as ecg_encoder:
     
     
@@ -67,7 +68,7 @@ with ECGEncoder(
         n_iter=n_iter_train,
         save_model_every_n_iter=save_model_every_n_iter,
         path_to_model=path_to_model)
-
+"""
 
 
 
@@ -79,6 +80,7 @@ with ECGEncoder(
     n_channel=PARAM['n_channels'],
     n_hidden_RNN=PARAM['n_hidden_RNN'],
     reduction_ratio=PARAM['rr'],
+    frame_weights=PARAM['frame_weights'],
     do_train=False) as ecg_encoder:
 
     ecg_encoder.predict(
@@ -87,6 +89,28 @@ with ECGEncoder(
         path_to_model=os.path.dirname(path_to_model),
         use_delta_coding=False)
 
-utils.test(true_path=path, pred_path=path_to_predictions+f_name+'_pred.npy',
+utils.test(pred_path=path_to_predictions+f_name+'_pred.npy',
     path_save=path_to_predictions+f_name+'_pred.png')
+
+
+# Get Z-code
+path='../data/little/AAO1CMED2K865.npy'
+f_name = ecg.utils.get_file_name(path)
+with ECGEncoder(
+    n_frames=PARAM['n_frames'],
+    n_channel=PARAM['n_channels'],
+    n_hidden_RNN=PARAM['n_hidden_RNN'],
+    reduction_ratio=PARAM['rr'],
+    frame_weights=PARAM['frame_weights'],
+    do_train=False) as ecg_encoder:
+
+    Z = ecg_encoder.get_Z(
+        path_to_file=path,
+        path_to_save=path_to_predictions+f_name+'_Z.npy',
+        path_to_model=os.path.dirname(path_to_model),
+        use_delta_coding=False)
+
+    print('Z shape', Z.shape)
+
+
 

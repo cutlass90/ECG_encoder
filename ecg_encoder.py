@@ -15,12 +15,13 @@ import ecg_encoder_tools as utils
 class ECGEncoder(object):
 
     def __init__(self, n_frames, n_channel, n_hidden_RNN, reduction_ratio,
-        do_train):
+        frame_weights, do_train):
 
         self.n_frames = n_frames
         self.n_channel = n_channel
         self.n_hidden_RNN = n_hidden_RNN
         self.reduction_ratio = reduction_ratio
+        self.frame_weights = frame_weights
         self.create_graph()
         if do_train: self.create_optimizer_graph(self.cost)
         os.makedirs('summary', exist_ok=True)
@@ -57,40 +58,38 @@ class ECGEncoder(object):
         self.sequence_length,\
         self.keep_prob,\
         self.weight_decay,\
-        self.learn_rate = self.input_graph()
+        self.learn_rate = self.input_graph() # inputs shape is #b*n_f x h1 x c1
 
         # Encoder
-        convo = self.convo_graph(self.inputs) #b*n_f x h1 x c1
+        convo = self.convo_graph(self.inputs) #b*n_f x h2 x c2
         # print('convo', convo)
 
         seq_l = tf.cast((self.sequence_length/self.reduction_ratio), tf.int32)
-        frame_embs = self.compress_frames_RNN(convo, seq_l, n_layers=2)
-        frame_embs = tf.reshape(frame_embs, [-1, self.n_frames, self.n_hidden_RNN])
-        # b x n_f x hRNN
+        frame_embs = self.compress_frames_RNN(convo, seq_l, n_layers=2) # b*n_f x hRNN
         # print('frame_embs', frame_embs)# b x n_f x hRNN
 
+        frame_embs = tf.reshape(frame_embs, [-1, self.n_frames, self.n_hidden_RNN])
         self.Z = self.encode_to_Z(inputs=frame_embs, n_layers=2) #b x hRNN
         # print('Z', self.Z)
 
 
 
         # Decoder
-        r_frame_embs = self.decode_from_Z(encoded_state=self.Z,
-            inputs=frame_embs, n_layers=1) # b x n_f x hRNN
+        r_frame_embs = self.decode_from_Z(encoded_state=self.Z, n_layers=1) # b x n_f x hRNN
         # print('r_frame_embs', r_frame_embs)
 
-        r_frame_embs = tf.reshape(r_frame_embs, [-1, self.n_hidden_RNN])# b*n_f x hRNN
+        r_frame_embs = tf.reshape(r_frame_embs, [-1, self.n_hidden_RNN])
         r_convo = self.decompress_frames_RNN(encoded_state=r_frame_embs,
-            seq_lengths=seq_l, inputs=convo, n_layers=1) #b*n_f x h1 x c1
+            seq_lengths=seq_l, n_layers=1) #b*n_f x h2 x c2
         # print('r_convo', r_convo)
 
-        self.r_inputs = self.deconvo_graph(r_convo) #b*n_f x h2 x c2
+        self.r_inputs = self.deconvo_graph(r_convo) #b*n_f x h1 x c1
         # print('r_inputs', self.r_inputs)
 
 
 
         self.cost = self.create_cost_graph(original=self.inputs,
-            recovered=self.r_inputs, Z=self.Z)
+            recovered=self.r_inputs, Z=self.Z, frame_weights=self.frame_weights)
         print('Done!')
 
 
@@ -109,6 +108,8 @@ class ECGEncoder(object):
         weight_decay = tf.placeholder(tf.float32, name='weight_decay')
 
         learn_rate = tf.placeholder(tf.float32, name='learn_rate')
+
+        # self.batch_size = tf.size(sequence_length)
 
         return inputs, sequence_length, keep_prob, weight_decay, learn_rate
 
@@ -204,16 +205,15 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def decode_from_Z(self, encoded_state, inputs, n_layers):
+    def decode_from_Z(self, encoded_state, n_layers):
         print('\tdecode_from_Z')
         # first step is zero-vectors
-        inputs = tf.concat([tf.zeros_like(inputs[:,0:1,:]), inputs], axis=1)[:,:-1,:]
 
         with tf.variable_scope('decode_from_Z'):
             decoder_fn = utils.simple_decoder_fn_train_(encoded_state)
             dec_cell = tf.contrib.rnn.GRUCell(self.n_hidden_RNN)
 
-            sl = tf.tile([self.n_frames], [tf.shape(inputs)[0]])
+            sl = tf.tile([self.n_frames], [tf.shape(encoded_state)[0]])
             recover, _, _ = tf.contrib.seq2seq.dynamic_rnn_decoder(
                 cell=dec_cell,
                 decoder_fn=decoder_fn,
@@ -224,10 +224,9 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def decompress_frames_RNN(self, encoded_state, inputs, seq_lengths, n_layers):
+    def decompress_frames_RNN(self, encoded_state, seq_lengths, n_layers):
         print('\tdecompress_frames_RNN')
         # first step is zero-vectors
-        inputs = tf.concat([tf.zeros_like(inputs[:,0:1,:]), inputs], axis=1)[:,:-1,:]
 
         with tf.variable_scope('decompress_frames_RNN'):
             decoder_fn = utils.simple_decoder_fn_train_(encoded_state)
@@ -280,10 +279,12 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def create_cost_graph(self, original, recovered, Z):
+    def create_cost_graph(self, original, recovered, Z, frame_weights):
         print('\tcreate_cost_graph')
 
-        self.mse = tf.reduce_mean(tf.square(original - recovered))
+        a = tf.reduce_mean(tf.square(original - recovered), [1,2]) # b*n_f
+        b = tf.reduce_mean(tf.reshape(a, [-1, self.n_frames]), 0) #n_f
+        self.mse = tf.reduce_mean(b*self.frame_weights)
 
         self.L2_loss = self.weight_decay*sum([tf.reduce_mean(tf.square(var))
             for var in tf.trainable_variables()])
@@ -341,7 +342,7 @@ class ECGEncoder(object):
                         self.keep_prob : keep_prob,
                         self.weight_decay : weight_decay,
                         self.learn_rate : learn_rate}
-            _, summary = self.sess.run([self.train, self.merged], feed_dict = feedDict)
+            _, summary = self.sess.run([self.train, self.merged], feed_dict=feedDict)
             self.train_writer.add_summary(summary, current_iter)
 
             if (current_iter+1) % save_model_every_n_iter == 0:
@@ -352,25 +353,23 @@ class ECGEncoder(object):
         print("Training time --- %s seconds ---" % (time.time() - start_time))
 
 
-    #############################################################################################################
+    # --------------------------------------------------------------------------
     def predict(self, path_to_file, path_to_save, path_to_model, use_delta_coding):
 
-        predicting_time = time.time()
         print('\n\n\n\t----==== Predicting ====----')
-        #load model
         self.load_model(path_to_model)
         
         data = np.load(path_to_file).item()
 
         gen = utils.step_generator(data,
-                   n_frames = self.n_frames,
-                   overlap = 0,
+                   n_frames = 1,
+                   overlap = self.n_frames-1,
                    get_data = not use_delta_coding,
                    get_delta_coded_data = use_delta_coding,
                    rr = self.reduction_ratio,
                    get_events = False)
         
-        result = np.empty([0,self.n_channel])
+        list_of_res = []
 
         forward_pass_time = 0
         for current_iter in tqdm(it.count()):
@@ -378,28 +377,77 @@ class ECGEncoder(object):
                 batch = next(gen)
             except StopIteration:
                 break
-            feedDict = {self.inputs : batch['normal_data'],
+            feedDict = {self.inputs : batch['normal_data'], #1*n_f x h x c (h is variable value)
                         self.sequence_length : batch['sequence_length'],
                         self.keep_prob : 1}
             start_time = time.time()
-            res = self.sess.run(self.r_inputs, feed_dict = feedDict) #n_f x h x c
+            res = self.sess.run(self.r_inputs, feed_dict=feedDict) #n_f x h x c
             forward_pass_time = forward_pass_time + (time.time() - start_time)
+
+            result = np.empty([0,self.n_channel])
+            original = np.empty([0,self.n_channel])
             for f in range(self.n_frames):
                 h = batch['seq_l']
-                a = np.reshape(res[f,:h[f], :], [-1, self.n_channel])
-                result = np.concatenate((result, a), 0)
+                r = np.reshape(res[f,:h[f], :], [-1, self.n_channel])
+                o = np.reshape(batch['normal_data'][f,:h[f], :], [-1, self.n_channel])
+                result = np.concatenate((result, r), 0)
+                original = np.concatenate((original, o), 0)
+            list_of_res.append({'original':original, 'recovered':result})
+
+        if path_to_save is not None:
+            np.save(path_to_save, list_of_res)
+            print('\nfile saved ', path_to_save)
 
 
-            
+        return list_of_res
+
+    # --------------------------------------------------------------------------
+    def get_Z(self, path_to_file, path_to_save, path_to_model, use_delta_coding):
+        self.load_model(path_to_model)
+
+        data = np.load(path_to_file).item()
+
+        gen = utils.step_generator(data,
+                   n_frames = 1,
+                   overlap = self.n_frames-1,
+                   get_data = not use_delta_coding,
+                   get_delta_coded_data = use_delta_coding,
+                   rr = self.reduction_ratio,
+                   get_events = False)
+        
+        result = np.empty([0,self.n_hidden_RNN])
+
+        forward_pass_time = 0
+        for current_iter in tqdm(it.count()):
+            try:
+                batch = next(gen)
+            except StopIteration:
+                break
+            feedDict = {self.inputs : batch['normal_data'], #1*n_f x h x c (h is variable value)
+                        self.sequence_length : batch['sequence_length'],
+                        self.keep_prob : 1}
+            start_time = time.time()
+            res = self.sess.run(self.Z, feed_dict=feedDict) # 1 x hRNN
+            forward_pass_time = forward_pass_time + (time.time() - start_time)
+            result = np.concatenate((result, res), 0)
+
+        n_beats = len(data['beats'])
+        assert len(result) == n_beats - self.n_frames,\
+            'Something wrong! result len = {0}, n_beats = {1}'.format(len(result),
+            len(data['beats']))
+
+        # zero padding
+        result = np.concatenate(
+            (np.zeros([self.n_frames//2,self.n_hidden_RNN]),
+            result,
+            np.zeros([self.n_frames//2,self.n_hidden_RNN])), axis=0)
+
         if path_to_save is not None:
             np.save(path_to_save, result)
             print('\nfile saved ', path_to_save)
 
-        print('forward_pass_time = ', forward_pass_time)
-        print('predicting_time = ', time.time() - predicting_time)
+        return result
 
-    def get_Z(self, path_to_file, path_to_save, path_to_model, use_delta_coding):
-        pass
 
 # testing #####################################################################################################################
 if __name__ == '__main__':
