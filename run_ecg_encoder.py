@@ -26,11 +26,9 @@ os.makedirs('summary/', exist_ok = True)
 
 
 # path_to_train_data = '../data/little/'
-# path_to_train_data      = '../../data/train/chunked/'
-# path_to_train_data      = '../../../ECG_DATA/all/chunked_data/'
+path_to_train_data = '../data/interesting_chunk_files/'
 # path_to_train_data = '../data/small_set/'
-path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
-# path_eval_cost_data     = '../../../ECG_DATA/ECG_DATA_1000samples_2/test/'
+# path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 # path_to_predict_data    = path_to_train_data
 path_to_predictions     = 'predictions/'
 os.makedirs(path_to_predictions, exist_ok = True)
@@ -45,12 +43,14 @@ gen_params = dict(n_frames = 1,
                 get_delta_coded_data = PARAM['use_delta_coding'],
                 get_events = False,
                 rr = PARAM['rr'])
-"""
+
 # Initialize data loader for training
 data_loader = utils.LoadDataFileShuffling(batch_size=PARAM['batch_size'],
                                     path_to_data=path_to_train_data,
                                     gen=utils.step_generator,
                                     gen_params=gen_params,
+                                    file_max_len=PARAM['file_max_len'],
+                                    file_min_len=PARAM['file_min_len'],
                                     verbose=PARAM['verbose'])
 
 
@@ -119,5 +119,5 @@ with ECGEncoder(
 
     print('Z shape', Z.shape)
 
-"""
+
 

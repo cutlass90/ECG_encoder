@@ -10,6 +10,8 @@ parameters = {
     'learn_rate_end':0.0001,
     'use_delta_coding':False,
     'use_chunked_data':False,
+    'file_max_len':None, #175*3600*2
+    'file_min_len':None, #175*3600
     'verbose':True,
     'frame_weights':[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1,
                     1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]

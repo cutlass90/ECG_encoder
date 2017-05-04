@@ -64,6 +64,8 @@ class LoadDataFileShuffling:
                  path_to_data,
                  gen,
                  gen_params,
+                 file_max_len, #two hours None if no limit
+                 file_min_len, #one hour None if no limit
                  verbose = False):
 
         self.batch_size = batch_size
@@ -73,9 +75,11 @@ class LoadDataFileShuffling:
         self.current_list_of_data = []
         self.paths_to_data = find_files(path = path_to_data, file_type = '*.npy')
         shuffle(self.paths_to_data)
+        print(self.paths_to_data[0])
+        self.use_chunked_data = np.load(self.paths_to_data[0]).size > 1
 
-        self.file_max_len = 175*3600*2 #two hours None if no limit
-        self.file_min_len = 175*3600 #one hour None if no limit
+        self.file_max_len = file_max_len #two hours None if no limit
+        self.file_min_len = file_min_len #one hour None if no limit
         if (self.file_max_len is not None) and (self.file_min_len is not None):
             assert self.file_max_len > self.file_min_len, 'must be file_max_len > file_min_len'
         
@@ -96,11 +100,19 @@ class LoadDataFileShuffling:
                 file_type = '*.npy')
             shuffle(self.paths_to_data)
 
+        if self.use_chunked_data:
+            if len(self.current_list_of_data) == 0:
+                self.current_list_of_data = np.load(self.paths_to_data[0])
+                shuffle(self.current_list_of_data)
+                n_ch = np.random.randint(10,20)
+                if len(self.current_list_of_data) >= n_ch:
+                    self.current_list_of_data = self.current_list_of_data[:n_ch]
+                self.paths_to_data.remove(self.paths_to_data[0])
+            data = self.current_list_of_data[-1]
+            self.current_list_of_data = self.current_list_of_data[:-1]
+        else:
+            data = np.load(self.paths_to_data.pop()).item()
 
-        if self.verbose:
-            pass
-            #print("\nFile " + self.paths_to_data[-1] + " was loaded")
-        data = np.load(self.paths_to_data.pop()).item()
         if (self.file_max_len is not None) and (self.file_min_len is not None):
             channels = ecg.utils.get_channels(data)
             file_len = np.random.randint(self.file_min_len, self.file_max_len + 1)
