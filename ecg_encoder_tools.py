@@ -469,38 +469,41 @@ def plot_confusion_matrix(true_labels, pred_labels, classes,
         plt.show()
     plt.close()
 
+#-------------------------------------------------------------------------------
 def test(pred_path, path_save):
     list_of_res = np.load(pred_path)
-    plt.figure(figsize=(25,10))
+    for i, res in enumerate(list_of_res):
+        plt.figure(figsize=(25,10))
 
-    true_signal = list_of_res[0]['original']
-    pred_signal = list_of_res[0]['recovered']
+        true_signal = res['original']
+        pred_signal = res['recovered']
 
-    plt.subplot(311)
-    plt.plot(true_signal[:,0], label='original')
-    plt.plot(pred_signal[:,0], label='recovered')
-    plt.legend()
-    plt.grid()
+        plt.subplot(311)
+        plt.plot(true_signal[:,0], label='original')
+        plt.plot(pred_signal[:,0], label='recovered')
+        plt.legend()
+        plt.grid()
 
-    plt.subplot(312)
-    plt.plot(true_signal[:,1], label='original')
-    plt.plot(pred_signal[:,1], label='recovered')
-    plt.legend()
-    plt.grid()
+        plt.subplot(312)
+        plt.plot(true_signal[:,1], label='original')
+        plt.plot(pred_signal[:,1], label='recovered')
+        plt.legend()
+        plt.grid()
 
 
-    plt.subplot(313)
-    plt.plot(true_signal[:,2], label='original')
-    plt.plot(pred_signal[:,2], label='recovered')
-    plt.legend()
-    plt.grid()
+        plt.subplot(313)
+        plt.plot(true_signal[:,2], label='original')
+        plt.plot(pred_signal[:,2], label='recovered')
+        plt.legend()
+        plt.grid()
 
-    plt.savefig(path_save)
+        plt.savefig(path_save + str(i)+'.png')
+        plt.close()
 
-#######################################################################################
+################################################################################
 #testing
 if __name__ == '__main__':
-    
+    """
     data = np.load('../data/little/AAO1CMED2K865.npy').item()
     gen = step_generator(data,
                        n_frames = 1,
@@ -513,6 +516,7 @@ if __name__ == '__main__':
     b = next(gen)
     print(b['sequence_length'])
     print(b['seq_l'])
+    """
     
 
 

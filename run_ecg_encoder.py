@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import tensorflow as tf
@@ -9,11 +10,16 @@ import ecg_encoder_tools as utils
 from ecg_encoder import ECGEncoder
 import ecg
 
+parser = argparse.ArgumentParser()
+for k,v in PARAM.items():
+    parser.add_argument('--'+k, default=v)
 
+args = parser.parse_args()
 
 print('\n\n\n\t----==== Import parameters ====----')
-with open('ecg_encoder_parameters.py', 'r') as param:
-    print(param.read())
+for arg in vars(args):
+    PARAM[arg] = getattr(args, arg)
+    print(arg, getattr(args, arg))
 
 os.makedirs('summary/', exist_ok = True)
 
@@ -29,7 +35,6 @@ path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 path_to_predictions     = 'predictions/'
 os.makedirs(path_to_predictions, exist_ok = True)
 n_iter_train            = 10000
-# n_iter_eval             = 10000
 save_model_every_n_iter = 10000
 path_to_model = 'models/ecg_encoder'
 
@@ -68,13 +73,15 @@ with ECGEncoder(
         n_iter=n_iter_train,
         save_model_every_n_iter=save_model_every_n_iter,
         path_to_model=path_to_model)
-"""
+
 
 
 
 # Predictions
 path='../data/little/AAO1CMED2K865.npy'
 f_name = ecg.utils.get_file_name(path)
+dir_name = path_to_predictions+f_name+'/'
+os.makedirs(dir_name, exist_ok=True)
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
@@ -90,7 +97,7 @@ with ECGEncoder(
         use_delta_coding=False)
 
 utils.test(pred_path=path_to_predictions+f_name+'_pred.npy',
-    path_save=path_to_predictions+f_name+'_pred.png')
+    path_save=dir_name)
 
 
 # Get Z-code
@@ -112,5 +119,5 @@ with ECGEncoder(
 
     print('Z shape', Z.shape)
 
-
+"""
 
