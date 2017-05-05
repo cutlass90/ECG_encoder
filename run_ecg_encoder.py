@@ -27,6 +27,7 @@ os.makedirs('summary/', exist_ok = True)
 
 # path_to_train_data = '../data/little/'
 path_to_train_data = '../data/interesting_chunk_files/'
+# path_to_train_data = '/data/Work/processed_ecg/chunked_data/'
 # path_to_train_data = '../data/small_set/'
 # path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 # path_to_predict_data    = path_to_train_data
