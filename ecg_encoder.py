@@ -74,7 +74,7 @@ class ECGEncoder(object):
 
 
 
-        self.Z = tf.concat([Z_l, Z_r], axis=1) # b x hRNN
+        self.Z = tf.concat([Z_l, Z_r], axis=1) # b x 2*hRNN
 
 
         
@@ -437,7 +437,7 @@ class ECGEncoder(object):
                    rr = self.reduction_ratio,
                    get_events = False)
         
-        result = np.empty([0,self.n_hidden_RNN])
+        result = np.empty([0, 2*self.n_hidden_RNN])
 
         forward_pass_time = 0
         for current_iter in tqdm(it.count()):
@@ -460,9 +460,9 @@ class ECGEncoder(object):
 
         # zero padding
         result = np.concatenate(
-            (np.zeros([self.n_frames//2,self.n_hidden_RNN]),
+            (np.zeros([self.n_frames//2, 2*self.n_hidden_RNN]),
             result,
-            np.zeros([self.n_frames//2,self.n_hidden_RNN])), axis=0)
+            np.zeros([self.n_frames//2, 2*self.n_hidden_RNN])), axis=0)
 
         if path_to_save is not None:
             np.save(path_to_save, result)

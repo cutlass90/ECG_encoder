@@ -33,7 +33,7 @@ path_to_train_data = '../data/interesting_chunk_files/'
 # path_to_predict_data    = path_to_train_data
 path_to_predictions     = 'predictions/'
 os.makedirs(path_to_predictions, exist_ok = True)
-n_iter_train            = 10000
+n_iter_train            = 2
 save_model_every_n_iter = 10000
 path_to_model = 'models/ecg_encoder'
 
@@ -44,7 +44,7 @@ gen_params = dict(n_frames = 1,
                 get_delta_coded_data = PARAM['use_delta_coding'],
                 get_events = False,
                 rr = PARAM['rr'])
-
+"""
 # Initialize data loader for training
 data_loader = utils.LoadDataFileShuffling(batch_size=PARAM['batch_size'],
                                     path_to_data=path_to_train_data,
@@ -119,6 +119,5 @@ with ECGEncoder(
         use_delta_coding=False)
 
     print('Z shape', Z.shape)
-
-
-
+"""
+os.system("python3 clustering.py --save_dir \"clustering_plots_kmeans\"")
