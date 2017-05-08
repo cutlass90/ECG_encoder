@@ -26,20 +26,20 @@ os.makedirs('summary/', exist_ok = True)
 
 
 # path_to_train_data = '../data/little/'
-path_to_train_data = '../data/interesting_chunk_files/'
-# path_to_train_data = '/data/Work/processed_ecg/chunked_data/'
+# path_to_train_data = '../data/interesting_chunk_files/'
+path_to_train_data = '/data/Work/processed_ecg/chunked_data/'
 # path_to_train_data = '../data/small_set/'
 # path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 # path_to_predict_data    = path_to_train_data
 path_to_predictions     = 'predictions/'
 os.makedirs(path_to_predictions, exist_ok = True)
-n_iter_train            = 2
+n_iter_train            = 100000
 save_model_every_n_iter = 10000
 path_to_model = 'models/ecg_encoder'
 
 
-gen_params = dict(n_frames = 1,
-                overlap = PARAM['n_frames']-1,
+gen_params = dict(n_frames = PARAM['n_frames'],
+                overlap = 0,
                 get_data = not(PARAM['use_delta_coding']),
                 get_delta_coded_data = PARAM['use_delta_coding'],
                 get_events = False,

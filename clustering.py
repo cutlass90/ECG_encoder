@@ -189,6 +189,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     def create_clustering_data():
+        from pympler import tracker
         # should return a list of dicts with the following keys:
         # `fp` - tuple, pointer to file (file_name, beat_idx)
         # `state` - 1-d numpy array which represents embedding (z-code, whatever) 
@@ -198,43 +199,78 @@ if __name__ == '__main__':
         from ecg_encoder import ECGEncoder
         import ecg
 
-        path_to_model = 'models/ecg_encoder'
+        def get_Z(data):
+            path_to_model = 'models/ecg_encoder'
+            gen_params = dict(n_frames = 1,
+                    overlap = PARAM['n_frames']-1,
+                    get_data = not(PARAM['use_delta_coding']),
+                    get_delta_coded_data = PARAM['use_delta_coding'],
+                    get_events = False,
+                    rr = PARAM['rr'])
 
-        gen_params = dict(n_frames = 1,
-                overlap = PARAM['n_frames']-1,
-                get_data = not(PARAM['use_delta_coding']),
-                get_delta_coded_data = PARAM['use_delta_coding'],
-                get_events = False,
-                rr = PARAM['rr'])
+            with ECGEncoder(
+                n_frames=PARAM['n_frames'],
+                n_channel=PARAM['n_channels'],
+                n_hidden_RNN=PARAM['n_hidden_RNN'],
+                reduction_ratio=PARAM['rr'],
+                frame_weights=PARAM['frame_weights'],
+                do_train=False) as ecg_encoder:
+
+                Z = ecg_encoder.get_Z(
+                    data=data,
+                    path_to_save=None,
+                    path_to_model=os.path.dirname(path_to_model),
+                    use_delta_coding=False)
+            return Z
 
         # Get Z-code
-        path = '../data/little/AAO1CMED2K865.npy'
-        with ECGEncoder(
-            n_frames=PARAM['n_frames'],
-            n_channel=PARAM['n_channels'],
-            n_hidden_RNN=PARAM['n_hidden_RNN'],
-            reduction_ratio=PARAM['rr'],
-            frame_weights=PARAM['frame_weights'],
-            do_train=False) as ecg_encoder:
-
-            Z = ecg_encoder.get_Z(
-                path_to_file=path,
-                path_to_save=None,
-                path_to_model=os.path.dirname(path_to_model),
-                use_delta_coding=False)
-        
-        data = np.load(path).item()
-        names = data['disease_name']
-        events = tools.remove_redundant_events(data['events'], names, new_diseases)
-
+        """
         list_of_samples = []
-        for i in range(data['beats'].shape[0]-2):
-            sample = {}
-            sample['fp'] = (path, i)
-            sample['label'] = events[i,:]
-            sample['state'] = Z[i,:]
-            list_of_samples.append(sample)
-        # print(len(list_of_samples))
+        paths = ecg.utils.find_files('/data/Work/processed_ecg/chunked_data/', '*.npy')
+        paths = paths[:1]
+        for path in paths:
+            list_of_data = np.load(path)
+            for data in list_of_data:
+                names = data['disease_name']
+                events = tools.remove_redundant_events(data['events'], names,
+                    new_diseases)
+                memory_tracker = tracker.SummaryTracker()
+                memory_tracker.print_diff()
+                Z = get_Z(data)
+                memory_tracker.print_diff()
+                print('Z shape',Z.shape)
+                print('beats',data['beats'].shape)
+                s = PARAM['n_frames'] // 2
+                e = data['beats'].shape[0] - 1 - PARAM['n_frames'] // 2
+                for i in range(s, e):
+                    sample = {}
+                    sample['fp'] = (path, i)
+                    sample['label'] = events[i,:]
+                    sample['state'] = Z[i,:]
+                    list_of_samples.append(sample)
+                break
+        """
+        list_of_samples = []
+        paths = ecg.utils.find_files('/data/Work/Nazar/data/dechunked/ABN0IIUXQL/', '*.npy')
+        # paths = paths[:2]
+        for path in paths:
+            data = np.load(path).item()
+            names = data['disease_name']
+            events = tools.remove_redundant_events(data['events'], names,
+                new_diseases)
+            Z = get_Z(data)
+            print('Z shape',Z.shape)
+            print('beats',data['beats'].shape)
+            s = PARAM['n_frames'] // 2
+            e = data['beats'].shape[0] - 1 - PARAM['n_frames'] // 2
+            for i in range(s, e):
+                sample = {}
+                sample['fp'] = (path, i)
+                sample['label'] = events[i,:]
+                sample['state'] = Z[i,:]
+                list_of_samples.append(sample)
+        
+        print('number of samples =', len(list_of_samples))
         # print(list_of_samples[0])
         # raise TypeError
         return list_of_samples

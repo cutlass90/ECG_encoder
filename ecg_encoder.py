@@ -424,10 +424,15 @@ class ECGEncoder(object):
         return list_of_res
 
     # --------------------------------------------------------------------------
-    def get_Z(self, path_to_file, path_to_save, path_to_model, use_delta_coding):
+    def get_Z(self, data, path_to_save, path_to_model, use_delta_coding):
+        """ Return Z-code for all beat in data.
+
+        Args:
+            data: may be either path to *.npy file or dict with data
+        """
         self.load_model(path_to_model)
 
-        data = np.load(path_to_file).item()
+        data = np.load(data).item() if isinstance(data, str) else data
 
         gen = utils.step_generator(data,
                    n_frames = 1,
