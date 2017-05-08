@@ -3,7 +3,7 @@ parameters = {
     'batch_size':64,
     'n_frames':20,
     'rr':8,
-    'n_hidden_RNN':128,
+    'n_hidden_RNN':256,
     'keep_prob':1,
     'weight_decay':0.00001,
     'learn_rate_start':0.01,

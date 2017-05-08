@@ -15,14 +15,18 @@ import ecg_encoder_tools as utils
 class ECGEncoder(object):
 
     def __init__(self, n_frames, n_channel, n_hidden_RNN, reduction_ratio,
-        frame_weights, do_train):
+        frame_weights, do_train, n_parts=None):
 
         self.n_frames = n_frames
         self.n_channel = n_channel
         self.n_hidden_RNN = n_hidden_RNN
         self.reduction_ratio = reduction_ratio
         self.frame_weights = frame_weights
-        self.create_graph()
+        self.n_parts = n_parts
+        if n_parts == None:
+            self.create_graph()
+        else:
+            self.create_inference_graph()
         if do_train: self.create_optimizer_graph(self.cost)
         os.makedirs('summary', exist_ok=True)
         sub_d = len(os.listdir('summary'))
@@ -97,7 +101,34 @@ class ECGEncoder(object):
         
         print('Done!')
 
+    # --------------------------------------------------------------------------
+    def create_inference_graph(self):
+        print('Creat inference graph')
 
+        self.inputs,\
+        self.sequence_length,\
+        self.keep_prob,\
+        self.weight_decay,\
+        self.learn_rate = self.input_graph() # inputs shape is # n_f*n_p x h1 x c1
+        self.inputs = tf.reshape(self.inputs, [self.n_frames*self.n_parts, -1, self.n_channel])
+
+        # Encoder
+        convo = self.convo_graph(self.inputs) # n_f*n_p x h2 x c2
+        # print('convo', convo)
+
+        seq_l = tf.cast((self.sequence_length/self.reduction_ratio), tf.int32)
+        frame_embs = self.compress_frames(convo, seq_l, n_layers=2) # n_f*n_p x hRNN
+
+        frame_embs = tf.reshape(frame_embs,[1, self.n_frames*self.n_parts, self.n_hidden_RNN])
+        # print('frame_embs', frame_embs)# 1 x n_p*n_f x hRNN
+        n_Z = (self.n_parts-1)*self.n_frames + 1
+        b_frame_embs = tf.concat([frame_embs[:,i:i+self.n_frames,:] for i in range(n_Z)], 0) # n_Z x n_f x hRNN
+        # print('b_frame_embs',b_frame_embs)
+        Z_l, Z_r = self.encode_to_Z(b_frame_embs) #n_Z x hRNN
+        self.Z = tf.concat([Z_l, Z_r], axis=1) # n_Z x 2*hRNN
+        # print('Z ', self.Z)
+        
+        print('Done!')
     # --------------------------------------------------------------------------
     def input_graph(self):
         print('\tinput_graph')
@@ -435,7 +466,7 @@ class ECGEncoder(object):
         data = np.load(data).item() if isinstance(data, str) else data
 
         gen = utils.step_generator(data,
-                   n_frames = 1,
+                   n_frames = (self.n_parts-1)*self.n_frames+1,
                    overlap = self.n_frames-1,
                    get_data = not use_delta_coding,
                    get_delta_coded_data = use_delta_coding,
@@ -450,24 +481,22 @@ class ECGEncoder(object):
                 batch = next(gen)
             except StopIteration:
                 break
-            feedDict = {self.inputs : batch['normal_data'], #1*n_f x h x c (h is variable value)
+            feedDict = {self.inputs : batch['normal_data'], #n_p*n_f x h x c (h is variable value)
                         self.sequence_length : batch['sequence_length'],
                         self.keep_prob : 1}
             start_time = time.time()
-            res = self.sess.run(self.Z, feed_dict=feedDict) # 1 x hRNN
+            res = self.sess.run(self.Z, feed_dict=feedDict) # (n_p-1)*n_f+1 x 2*hRNN
             forward_pass_time = forward_pass_time + (time.time() - start_time)
             result = np.concatenate((result, res), 0)
-
-        n_beats = len(data['beats'])
-        assert len(result) == n_beats - self.n_frames,\
-            'Something wrong! result len = {0}, n_beats = {1}'.format(len(result),
-            len(data['beats']))
+        print('result shape', result.shape)
 
         # zero padding
+        n_beats = len(data['beats'])
+        end_pad = n_beats - self.n_frames//2 - result.shape[0]
         result = np.concatenate(
             (np.zeros([self.n_frames//2, 2*self.n_hidden_RNN]),
             result,
-            np.zeros([self.n_frames//2, 2*self.n_hidden_RNN])), axis=0)
+            np.zeros([end_pad, 2*self.n_hidden_RNN])), axis=0)
 
         if path_to_save is not None:
             np.save(path_to_save, result)
@@ -478,6 +507,7 @@ class ECGEncoder(object):
 
 # testing #####################################################################################################################
 if __name__ == '__main__':
+    """
     ECGEncoder(
         n_frames=20,
         n_channel=3,
@@ -486,3 +516,9 @@ if __name__ == '__main__':
         frame_weights=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1,
                     1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
         do_train=False)
+    """
+    ECGEncoder(n_frames=20, n_channel=3, n_hidden_RNN=128, reduction_ratio=8,
+        frame_weights=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1,
+                    1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
+        n_parts=3, do_train=False)
+

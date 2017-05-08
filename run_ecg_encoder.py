@@ -99,25 +99,27 @@ with ECGEncoder(
 
 utils.test(pred_path=path_to_predictions+f_name+'_pred.npy',
     path_save=dir_name)
-
+"""
 
 # Get Z-code
-path='../data/little/AAO1CMED2K865.npy'
-f_name = ecg.utils.get_file_name(path)
+paths = ecg.utils.find_files('/data/Work/processed_ecg/valid_files/', '*.npy')
+paths = paths[1:21]
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
     n_hidden_RNN=PARAM['n_hidden_RNN'],
     reduction_ratio=PARAM['rr'],
     frame_weights=PARAM['frame_weights'],
+    n_parts=10,
     do_train=False) as ecg_encoder:
+    
+    for path in paths:
+        f_name = ecg.utils.get_file_name(path)
+        ecg_encoder.get_Z(
+            data=path,
+            path_to_save=path_to_predictions+f_name+'_Z.npy',
+            path_to_model=os.path.dirname(path_to_model),
+            use_delta_coding=False)
 
-    Z = ecg_encoder.get_Z(
-        path_to_file=path,
-        path_to_save=path_to_predictions+f_name+'_Z.npy',
-        path_to_model=os.path.dirname(path_to_model),
-        use_delta_coding=False)
 
-    print('Z shape', Z.shape)
-"""
-os.system("python3 clustering.py --save_dir \"clustering_plots_kmeans\"")
+os.system("python3 clustering.py --save_dir \"clustering_plots_kmeans\" --n_clusters 50")
