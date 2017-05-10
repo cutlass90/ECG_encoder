@@ -201,7 +201,7 @@ if __name__ == '__main__':
         # Get Z-code
         list_of_samples = []
         path_to_Z = 'predictions/'
-        path_to_data = '/data/Work/processed_ecg/valid_files/'
+        path_to_data = '../data/interesting/'
 
         paths = ecg.utils.find_files(path_to_data, '*.npy')
         paths = paths[1:21]

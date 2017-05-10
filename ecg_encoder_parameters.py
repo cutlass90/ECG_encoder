@@ -1,9 +1,9 @@
 parameters = {
     'n_channels':3,
     'batch_size':64,
-    'n_frames':20,
+    'n_frames':6,
     'rr':8,
-    'n_hidden_RNN':256,
+    'n_hidden_RNN':128,
     'keep_prob':1,
     'weight_decay':0.00001,
     'learn_rate_start':0.01,
@@ -13,8 +13,7 @@ parameters = {
     'file_max_len':None, #175*3600*2
     'file_min_len':None, #175*3600
     'verbose':True,
-    'frame_weights':[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1,
-                    1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
+    'frame_weights':[0.1, 0.5, 1, 1, 0.5, 0.1]
 }
 
 assert parameters['n_frames'] == len(parameters['frame_weights']), \

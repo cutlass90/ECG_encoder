@@ -23,6 +23,7 @@ class ECGEncoder(object):
         self.reduction_ratio = reduction_ratio
         self.frame_weights = frame_weights
         self.n_parts = n_parts
+        self.do_train = do_train
         if n_parts == None:
             self.create_graph()
         else:
@@ -76,10 +77,12 @@ class ECGEncoder(object):
         print('Z left', Z_l)
         print('Z right', Z_r)
 
-
-
-        self.Z = tf.concat([Z_l, Z_r], axis=1) # b x 2*hRNN
-
+        if self.do_train:
+            sh = tf.shape(Z_l)
+            noise = tf.random_normal(stddev=0.01, shape=[sh[0], 2*sh[1]])
+            self.Z = tf.concat([Z_l, Z_r], axis=1) + noise # b x 2*hRNN
+        else:
+            self.Z = tf.concat([Z_l, Z_r], axis=1) # b x 2*hRNN
 
         
         # Decoder
