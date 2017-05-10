@@ -66,41 +66,49 @@ class ECGEncoder(object):
 
         # Encoder
         convo = self.convo_graph(self.inputs) #b*n_f x h2 x c2
-        print('convo', convo)
+        # print('convo', convo)
 
         seq_l = tf.cast((self.sequence_length/self.reduction_ratio), tf.int32)
         frame_embs = self.compress_frames(convo, seq_l, n_layers=2) # b*n_f x hRNN
-        print('frame_embs', frame_embs)# b x n_f x hRNN
+        # print('frame_embs', frame_embs)# b x n_f x hRNN
 
         frame_embs = tf.reshape(frame_embs, [-1, self.n_frames, self.n_hidden_RNN])
-        Z_l, Z_r = self.encode_to_Z(inputs=frame_embs) #b x hRNN
-        print('Z left', Z_l)
-        print('Z right', Z_r)
+        Z_l, Z_r = self.encode_to_Z(inputs=frame_embs, n_hidden=2*self.n_hidden_RNN) #b x 2*hRNN
+        # print('Z left', Z_l)
+        # print('Z right', Z_r)
 
-        if self.do_train:
-            sh = tf.shape(Z_l)
-            noise = tf.random_normal(stddev=0.01, shape=[sh[0], 2*sh[1]])
-            self.Z = tf.concat([Z_l, Z_r], axis=1) + noise # b x 2*hRNN
-        else:
-            self.Z = tf.concat([Z_l, Z_r], axis=1) # b x 2*hRNN
+        
+        mu_l, sigma_l = tf.split(Z_l, 2, axis=1)
+        mu_r, sigma_r = tf.split(Z_r, 2, axis=1)
+        sigma_l = tf.nn.softplus(sigma_l)
+        sigma_r = tf.nn.softplus(sigma_r)
+        Z_l = self.sample_Z(mu=mu_l, sigma=sigma_l) #b x hRNN
+        Z_r = self.sample_Z(mu=mu_r, sigma=sigma_r) #b x hRNN
+            
+
+        self.Z = tf.concat((Z_l,Z_r), axis=1)
+        tf.summary.histogram('Z hist', self.Z)
+
 
         
         # Decoder
         r_frame_embs = self.decode_from_Z(encoded_states=[Z_l,Z_r]) # b x n_f x hRNN
-        print('r_frame_embs', r_frame_embs)
+        # print('r_frame_embs', r_frame_embs)
 
         r_frame_embs = tf.reshape(r_frame_embs, [-1, self.n_hidden_RNN])# b*n_f x hRNN
         r_convo = self.decompress_frames(encoded_state=r_frame_embs,
             seq_lengths=seq_l, n_layers=1) #b*n_f x h2 x c2
-        print('r_convo', r_convo)
+        # print('r_convo', r_convo)
 
         self.r_inputs = self.deconvo_graph(r_convo) #b*n_f x h1 x c1
-        print('r_inputs', self.r_inputs)
+        # print('r_inputs', self.r_inputs)
 
 
 
         self.cost = self.create_cost_graph(original=self.inputs,
-            recovered=self.r_inputs, Z=self.Z, frame_weights=self.frame_weights)
+            recovered=self.r_inputs, frame_weights=self.frame_weights, mu_l=mu_l,
+            sigma_l=sigma_l, mu_r=mu_r, sigma_r=sigma_r)
+        
         
         print('Done!')
 
@@ -127,7 +135,15 @@ class ECGEncoder(object):
         n_Z = (self.n_parts-1)*self.n_frames + 1
         b_frame_embs = tf.concat([frame_embs[:,i:i+self.n_frames,:] for i in range(n_Z)], 0) # n_Z x n_f x hRNN
         # print('b_frame_embs',b_frame_embs)
-        Z_l, Z_r = self.encode_to_Z(b_frame_embs) #n_Z x hRNN
+        Z_l, Z_r = self.encode_to_Z(b_frame_embs, n_hidden=2*self.n_hidden_RNN) #n_Z x 2*hRNN
+
+        mu_l, sigma_l = tf.split(Z_l, 2, axis=1)
+        mu_r, sigma_r = tf.split(Z_r, 2, axis=1)
+        sigma_l = tf.nn.softplus(sigma_l)
+        sigma_r = tf.nn.softplus(sigma_r)
+        Z_l = self.sample_Z(mu=mu_l, sigma=sigma_l) #b x hRNN
+        Z_r = self.sample_Z(mu=mu_r, sigma=sigma_r) #b x hRNN
+
         self.Z = tf.concat([Z_l, Z_r], axis=1) # n_Z x 2*hRNN
         # print('Z ', self.Z)
         
@@ -219,18 +235,26 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def encode_to_Z(self, inputs):
+    def encode_to_Z(self, inputs, n_hidden):
         # inputs b x n_f x hRNN
         print('\tencode_to_Z')
 
         Z_l = self.RNN(inputs[:,:self.n_frames//2,:], scope='encode_Z_left',
-            n_layers=2, n_hidden=self.n_hidden_RNN) # b x hRNN
+            n_layers=2, n_hidden=n_hidden) # b x n_hidden
 
         reversed_data = tf.reverse(inputs[:,self.n_frames//2:,:], axis=[1])
         Z_r = self.RNN(reversed_data, scope='encode_Z_right',
-            n_layers=2, n_hidden=self.n_hidden_RNN) # b x hRNN
+            n_layers=2, n_hidden=n_hidden) # b x n_hidden
         
         return Z_l, Z_r
+
+
+    # --------------------------------------------------------------------------
+    def sample_Z(self, mu, sigma):
+        dist = tf.contrib.distributions.Normal(mu, sigma)
+        return dist.sample()
+        
+
 
 
     # --------------------------------------------------------------------------
@@ -335,7 +359,8 @@ class ECGEncoder(object):
 
 
     # --------------------------------------------------------------------------
-    def create_cost_graph(self, original, recovered, Z, frame_weights):
+    def create_cost_graph(self, original, recovered, frame_weights, mu_l,
+            sigma_l, mu_r, sigma_r):
         print('\tcreate_cost_graph')
 
         a = tf.reduce_mean(tf.square(original - recovered), [1,2]) # b*n_f
@@ -345,12 +370,18 @@ class ECGEncoder(object):
         self.L2_loss = self.weight_decay*sum([tf.reduce_mean(tf.square(var))
             for var in tf.trainable_variables()])
 
-        self.Z_L2_loss = 0.001*tf.reduce_mean(tf.square(Z))
+        self.KL_loss = tf.reduce_mean(self.KL_loss(mu_l, sigma_l) +
+            self.KL_loss(mu_r, sigma_r))
 
         tf.summary.scalar('MSE', self.mse)
         tf.summary.scalar('L2 loss', self.L2_loss)
-        tf.summary.scalar('Z L2 loss', self.Z_L2_loss)
-        return self.mse + self.L2_loss + self.Z_L2_loss
+        tf.summary.scalar('KL loss', self.KL_loss)
+        return self.mse + self.L2_loss + self.KL_loss
+
+    # --------------------------------------------------------------------------
+    def KL_loss(self, mu, sigma):
+        loss = tf.log(1/sigma) + (sigma*sigma+mu*mu)/2 - 0.5
+        return loss
 
 
     # --------------------------------------------------------------------------
@@ -523,5 +554,5 @@ if __name__ == '__main__':
     ECGEncoder(n_frames=20, n_channel=3, n_hidden_RNN=128, reduction_ratio=8,
         frame_weights=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1,
                     1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
-        n_parts=3, do_train=False)
+        n_parts=None, do_train=True)
 
