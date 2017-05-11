@@ -62,7 +62,8 @@ class ECGEncoder(object):
         self.sequence_length,\
         self.keep_prob,\
         self.weight_decay,\
-        self.learn_rate = self.input_graph() # inputs shape is #b*n_f x h1 x c1
+        self.learn_rate,\
+        self.KL_weight = self.input_graph() # inputs shape is # n_f*n_p x h1 x c1
 
         # Encoder
         convo = self.convo_graph(self.inputs) #b*n_f x h2 x c2
@@ -78,6 +79,7 @@ class ECGEncoder(object):
         # print('Z right', Z_r)
 
         
+
         mu_l, sigma_l = tf.split(Z_l, 2, axis=1)
         mu_r, sigma_r = tf.split(Z_r, 2, axis=1)
         sigma_l = tf.nn.softplus(sigma_l)
@@ -86,7 +88,7 @@ class ECGEncoder(object):
         Z_r = self.sample_Z(mu=mu_r, sigma=sigma_r) #b x hRNN
             
 
-        self.Z = tf.concat((Z_l,Z_r), axis=1)
+        self.Z = tf.concat((mu_l, mu_r), axis=1)
         tf.summary.histogram('Z hist', self.Z)
 
 
@@ -120,7 +122,8 @@ class ECGEncoder(object):
         self.sequence_length,\
         self.keep_prob,\
         self.weight_decay,\
-        self.learn_rate = self.input_graph() # inputs shape is # n_f*n_p x h1 x c1
+        self.learn_rate,\
+        self.KL_weight = self.input_graph() # inputs shape is # n_f*n_p x h1 x c1
         self.inputs = tf.reshape(self.inputs, [self.n_frames*self.n_parts, -1, self.n_channel])
 
         # Encoder
@@ -139,12 +142,7 @@ class ECGEncoder(object):
 
         mu_l, sigma_l = tf.split(Z_l, 2, axis=1)
         mu_r, sigma_r = tf.split(Z_r, 2, axis=1)
-        sigma_l = tf.nn.softplus(sigma_l)
-        sigma_r = tf.nn.softplus(sigma_r)
-        Z_l = self.sample_Z(mu=mu_l, sigma=sigma_l) #b x hRNN
-        Z_r = self.sample_Z(mu=mu_r, sigma=sigma_r) #b x hRNN
-
-        self.Z = tf.concat([Z_l, Z_r], axis=1) # n_Z x 2*hRNN
+        self.Z = tf.concat((mu_l, mu_r), axis=1)
         # print('Z ', self.Z)
         
         print('Done!')
@@ -164,9 +162,11 @@ class ECGEncoder(object):
 
         learn_rate = tf.placeholder(tf.float32, name='learn_rate')
 
+        KL_weight = tf.placeholder(tf.float32, name='learn_rate')
+
         # self.batch_size = tf.size(sequence_length)
 
-        return inputs, sequence_length, keep_prob, weight_decay, learn_rate
+        return inputs, sequence_length, keep_prob, weight_decay, learn_rate, KL_weight
 
 
     # --------------------------------------------------------------------------
@@ -370,7 +370,7 @@ class ECGEncoder(object):
         self.L2_loss = self.weight_decay*sum([tf.reduce_mean(tf.square(var))
             for var in tf.trainable_variables()])
 
-        self.KL_loss = tf.reduce_mean(self.KL_loss(mu_l, sigma_l) +
+        self.KL_loss = self.KL_weight*tf.reduce_mean(self.KL_loss(mu_l, sigma_l) +
             self.KL_loss(mu_r, sigma_r))
 
         tf.summary.scalar('MSE', self.mse)
@@ -409,8 +409,8 @@ class ECGEncoder(object):
 
 
     #---------------------------------------------------------------------------
-    def train_(self, data_loader,  keep_prob, weight_decay, learn_rate_start,
-        learn_rate_end, n_iter, save_model_every_n_iter, path_to_model):
+    def train_(self, data_loader,  keep_prob, weight_decay,  learn_rate_start,
+        learn_rate_end, KL_weight, n_iter, save_model_every_n_iter, path_to_model):
         print('\n\n\n\t----==== Training ====----')
         #try to load model
         try:
@@ -428,7 +428,8 @@ class ECGEncoder(object):
                         self.sequence_length : batch['sequence_length'],
                         self.keep_prob : keep_prob,
                         self.weight_decay : weight_decay,
-                        self.learn_rate : learn_rate}
+                        self.learn_rate : learn_rate,
+                        self.KL_weight : KL_weight}
             _, summary = self.sess.run([self.train, self.merged], feed_dict=feedDict)
             self.train_writer.add_summary(summary, current_iter)
 

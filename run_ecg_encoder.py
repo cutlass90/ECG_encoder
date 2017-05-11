@@ -71,6 +71,7 @@ with ECGEncoder(
         weight_decay=PARAM['weight_decay'],
         learn_rate_start=PARAM['learn_rate_start'],
         learn_rate_end=PARAM['learn_rate_end'],
+        KL_weight=PARAM['KL_weight'],
         n_iter=n_iter_train,
         save_model_every_n_iter=save_model_every_n_iter,
         path_to_model=path_to_model)
