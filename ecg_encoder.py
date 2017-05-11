@@ -389,7 +389,18 @@ class ECGEncoder(object):
         print('create_optimizer_graph')
         with tf.variable_scope('optimizer_graph'):
             optimizer = tf.train.AdamOptimizer(self.learn_rate)
-            self.train = optimizer.minimize(cost)
+            mse_grad = optimizer.compute_gradients(self.mse)
+            L2_loss_grad = optimizer.compute_gradients(self.L2_loss)
+            KL_loss_grad = optimizer.compute_gradients(self.KL_loss)
+            self.train = optimizer.apply_gradients(mse_grad + L2_loss_grad + KL_loss_grad)
+
+            mse = tf.reduce_mean([tf.reduce_mean(tf.abs(t)) for t,n in mse_grad if t is not None])
+            L2 = tf.reduce_mean([tf.reduce_mean(tf.abs(t)) for t,n in L2_loss_grad if t is not None])
+            KL = tf.reduce_mean([tf.reduce_mean(tf.abs(t)) for t,n in KL_loss_grad if t is not None])
+            tf.summary.scalar('MSE grad', mse)
+            tf.summary.scalar('L2 grad', L2)
+            tf.summary.scalar('KL grad', KL)
+            
 
         
     #---------------------------------------------------------------------------  
