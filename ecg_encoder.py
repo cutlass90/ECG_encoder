@@ -560,6 +560,58 @@ class ECGEncoder(object):
         return result_mu, result_sigma
 
 
+    # --------------------------------------------------------------------------
+    def get_latent_state(self, data, path_to_save, path_to_model, use_delta_coding):
+        """ Return Z-code for all beat in data.
+
+        Args:
+            data: may be either path to *.npy file or dict with data
+        """
+
+        self.load_model(path_to_model)
+
+        data = np.load(data).item() if isinstance(data, str) else data
+
+        gen = utils.step_generator(data,
+                   n_frames = (self.n_parts-1)*self.n_frames+1,
+                   overlap = self.n_frames-1,
+                   get_data = not use_delta_coding,
+                   get_delta_coded_data = use_delta_coding,
+                   rr = self.reduction_ratio,
+                   get_events = False)
+        
+        result_mu = np.empty([0, 2*self.n_hidden_RNN])
+        result_sigma = np.empty([0, 2*self.n_hidden_RNN])
+
+        forward_pass_time = 0
+        for current_iter in tqdm(it.count()):
+            try:
+                batch = next(gen)
+            except StopIteration:
+                break
+            feedDict = {self.inputs : batch['normal_data'], #n_p*n_f x h x c (h is variable value)
+                        self.sequence_length : batch['sequence_length'],
+                        self.keep_prob : 1}
+            start_time = time.time()
+            mu, sigma = self.sess.run([self.Z, self.sigma], feed_dict=feedDict) # (n_p-1)*n_f+1 x 2*hRNN
+            forward_pass_time = forward_pass_time + (time.time() - start_time)
+            result_mu = np.concatenate((result_mu, mu), 0)
+            result_sigma = np.concatenate((result_sigma, sigma), 0)
+
+        latent_state = {}
+        latent_state['mu'] = result_mu
+        latent_state['sigma'] = result_sigma
+        latent_state['beat_indexes'] = np.arange(self.n_frames//2,
+            self.n_frames//2+result_mu.shape[0])
+        latent_state['events'] = data['events'][latent_state['beat_indexes'], :]
+
+        if path_to_save is not None:
+            np.save(path_to_save, latent_state)
+            print('\nfile saved ', path_to_save)
+
+        return latent_state
+
+
 # testing #####################################################################################################################
 if __name__ == '__main__':
     """

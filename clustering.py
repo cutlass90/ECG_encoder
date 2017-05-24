@@ -163,7 +163,7 @@ def plot_clusters(clustering_data, cluster_labels, save_path):
     for label in set(cluster_labels):
         cluster_data[label] = clustering_data[cluster_labels == label]
     for label, data in cluster_data.items():
-        skip_prob = min(100*len(data)/len(clustering_data), 0.999)
+        skip_prob = 0.9#min(100*len(data)/len(clustering_data), 0.999)
         print('\nPlotting cluster with label {}, with total size of {}. Skip prob: {}.'.format(
             label, len(data), skip_prob))
         plot_beats(
@@ -193,34 +193,25 @@ if __name__ == '__main__':
         # `fp` - tuple, pointer to file (file_name, beat_idx)
         # `state` - 1-d numpy array which represents embedding (z-code, whatever) 
         # `label` - 1-d numpy array which represents diseases associated with state
-        from ecg_encoder_parameters import parameters as PARAM
-        import ecg_encoder_tools as utils
-        from ecg_encoder import ECGEncoder
-        import ecg
 
-        # Get Z-code
         list_of_samples = []
         path_to_Z = 'predictions/'
-        path_to_data = '../data/interesting/'
+        path_to_data = '../data/small_set/AAO1CMED2K/'
 
-        paths = ecg.utils.find_files(path_to_data, '*.npy')
-        paths = paths[1:21]
+        paths = tools.find_files(path_to_data, '*.npy')
+        
         for path in paths:
-            file_name = ecg.utils.get_file_name(path)
+            file_name = tools.get_file_name(path)
             data = np.load(path).item()
             names = data['disease_name']
             events = tools.remove_redundant_events(data['events'], names,
                 new_diseases)
-            Z = np.load(path_to_Z+file_name+'_Z.npy')
-            print('Z shape',Z.shape)
-            print('beats',data['beats'].shape)
-            s = PARAM['n_frames'] // 2
-            e = data['beats'].shape[0] - 1 - PARAM['n_frames'] // 2 - 10*20*2
-            for i in range(s, e):
+            ls = np.load(path_to_Z+file_name+'_latent_state.npy').item()
+            for i in range(len(ls['beat_indexes'])):
                 sample = {}
-                sample['fp'] = (path, i)
-                sample['label'] = events[i,:]
-                sample['state'] = Z[i,:]
+                sample['fp'] = (path, ls['beat_indexes'][i])
+                sample['label'] = events[ls['beat_indexes'][i],:]
+                sample['state'] = ls['mu'][i]
                 list_of_samples.append(sample)
         
         print('number of samples =', len(list_of_samples))
