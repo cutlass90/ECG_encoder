@@ -143,6 +143,7 @@ class ECGEncoder(object):
         mu_l, sigma_l = tf.split(Z_l, 2, axis=1)
         mu_r, sigma_r = tf.split(Z_r, 2, axis=1)
         self.Z = tf.concat((mu_l, mu_r), axis=1)
+        self.sigma = tf.concat((sigma_l, sigma_r), axis=1)
         # print('Z ', self.Z)
         
         print('Done!')
@@ -507,6 +508,17 @@ class ECGEncoder(object):
         Args:
             data: may be either path to *.npy file or dict with data
         """
+
+        def zero_padding(result, data):
+            n_beats = len(data['beats'])
+            end_pad = n_beats - self.n_frames//2 - result.shape[0]
+            result = np.concatenate(
+                (np.zeros([self.n_frames//2, 2*self.n_hidden_RNN]),
+                result,
+                np.zeros([end_pad, 2*self.n_hidden_RNN])), axis=0)
+            return result
+
+
         self.load_model(path_to_model)
 
         data = np.load(data).item() if isinstance(data, str) else data
@@ -519,7 +531,8 @@ class ECGEncoder(object):
                    rr = self.reduction_ratio,
                    get_events = False)
         
-        result = np.empty([0, 2*self.n_hidden_RNN])
+        result_mu = np.empty([0, 2*self.n_hidden_RNN])
+        result_sigma = np.empty([0, 2*self.n_hidden_RNN])
 
         forward_pass_time = 0
         for current_iter in tqdm(it.count()):
@@ -531,24 +544,20 @@ class ECGEncoder(object):
                         self.sequence_length : batch['sequence_length'],
                         self.keep_prob : 1}
             start_time = time.time()
-            res = self.sess.run(self.Z, feed_dict=feedDict) # (n_p-1)*n_f+1 x 2*hRNN
+            mu, sigma = self.sess.run([self.Z, self.sigma], feed_dict=feedDict) # (n_p-1)*n_f+1 x 2*hRNN
             forward_pass_time = forward_pass_time + (time.time() - start_time)
-            result = np.concatenate((result, res), 0)
-        print('result shape', result.shape)
+            result_mu = np.concatenate((result_mu, mu), 0)
+            result_sigma = np.concatenate((result_sigma, sigma), 0)
 
-        # zero padding
-        n_beats = len(data['beats'])
-        end_pad = n_beats - self.n_frames//2 - result.shape[0]
-        result = np.concatenate(
-            (np.zeros([self.n_frames//2, 2*self.n_hidden_RNN]),
-            result,
-            np.zeros([end_pad, 2*self.n_hidden_RNN])), axis=0)
+        result_mu = zero_padding(result_mu, data)
+        result_sigma = zero_padding(result_sigma, data)
 
         if path_to_save is not None:
-            np.save(path_to_save, result)
+            np.save(path_to_save[0], result_mu)
+            np.save(path_to_save[1], result_sigma)
             print('\nfile saved ', path_to_save)
 
-        return result
+        return result_mu, result_sigma
 
 
 # testing #####################################################################################################################

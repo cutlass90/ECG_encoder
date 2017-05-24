@@ -44,7 +44,7 @@ gen_params = dict(n_frames = PARAM['n_frames'],
                 get_delta_coded_data = PARAM['use_delta_coding'],
                 get_events = False,
                 rr = PARAM['rr'])
-
+"""
 # Initialize data loader for training
 data_loader = utils.LoadDataFileShuffling(batch_size=PARAM['batch_size'],
                                     path_to_data=path_to_train_data,
@@ -100,10 +100,10 @@ with ECGEncoder(
 
 utils.test(pred_path=path_to_predictions+f_name+'_pred.npy',
     path_save=dir_name)
-
+"""
 
 # Get Z-code
-paths = ecg.utils.find_files('../data/interesting/', '*.npy')
+paths = ecg.utils.find_files('../data/small_set/AAO1CMED2K/', '*.npy')
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
@@ -115,11 +115,12 @@ with ECGEncoder(
     
     for path in paths:
         f_name = ecg.utils.get_file_name(path)
+        p = path_to_predictions+f_name
         ecg_encoder.get_Z(
             data=path,
-            path_to_save=path_to_predictions+f_name+'_Z.npy',
+            path_to_save=(p+'_mu.npy', p+'_sigma.npy'),
             path_to_model=os.path.dirname(path_to_model),
             use_delta_coding=False)
 
 
-os.system("python3 clustering.py --save_dir \"clustering_plots_kmeans\" --n_clusters 100")
+# os.system("python3 clustering.py --save_dir \"clustering_plots_kmeans\" --n_clusters 100")
