@@ -31,7 +31,7 @@ path_to_train_data = '/data/Work/processed_ecg/chunked_data/'
 # path_to_train_data = '../data/small_set/'
 # path_to_train_data     = '../../ECG_DATA/ECG_DATA_1000samples_2/'
 # path_to_predict_data    = path_to_train_data
-path_to_predictions     = 'predictions/'
+path_to_predictions     = 'predictions/latent_states_PAC/'
 os.makedirs(path_to_predictions, exist_ok = True)
 n_iter_train            = 100000
 save_model_every_n_iter = 10000
@@ -125,7 +125,7 @@ with ECGEncoder(
 
 
 # Get latent state
-paths = ecg.utils.find_files('../data/small_set/AAO1CMED2K/', '*.npy')
+paths = ecg.utils.find_files('/data/Work/Dima/ecg_folder/convo_classifier/train_files/PAC/', '*.npy')
 with ECGEncoder(
     n_frames=PARAM['n_frames'],
     n_channel=PARAM['n_channels'],
@@ -134,8 +134,11 @@ with ECGEncoder(
     frame_weights=PARAM['frame_weights'],
     n_parts=10,
     do_train=False) as ecg_encoder:
+
+    ecg_encoder.load_model(os.path.dirname(path_to_model))
     
-    for path in paths:
+    for i,path in enumerate(paths):
+        print('Processing file', i)
         f_name = ecg.utils.get_file_name(path)
         p = path_to_predictions+f_name
         ecg_encoder.get_latent_state(

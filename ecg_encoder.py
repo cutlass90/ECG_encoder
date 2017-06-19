@@ -568,7 +568,7 @@ class ECGEncoder(object):
             data: may be either path to *.npy file or dict with data
         """
 
-        self.load_model(path_to_model)
+        # self.load_model(path_to_model)
 
         data = np.load(data).item() if isinstance(data, str) else data
 
@@ -599,13 +599,13 @@ class ECGEncoder(object):
             result_sigma = np.concatenate((result_sigma, sigma), 0)
 
         latent_state = {}
-        latent_state['mu'] = result_mu
-        latent_state['sigma'] = result_sigma
+        latent_state['mu'] = result_mu.astype(np.float32)
+        latent_state['sigma'] = result_sigma.astype(np.float32)
         latent_state['beat_indexes'] = np.arange(self.n_frames//2,
             self.n_frames//2+result_mu.shape[0])
-        latent_state['events'] = data['events'][latent_state['beat_indexes'], :]
+        latent_state['events'] = data['events'][latent_state['beat_indexes'], :].astype(np.int8)
 
-        if path_to_save is not None:
+        if (path_to_save is not None) and (len(latent_state['mu'])>0):
             np.save(path_to_save, latent_state)
             print('\nfile saved ', path_to_save)
 
